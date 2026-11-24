@@ -11,7 +11,7 @@ import { InlineEditableProviderCard } from "./InlineEditableProviderCard.js";
 import { ModelProviderLoadingCard, PresetProviderPlaceholderCard } from "./StatusCards.js";
 import { useProviderSettingsView } from "@/hooks/useProviderSettingsView.js";
 import type { ProviderSettingsView } from "@zcode/services";
-import type { SavePersonalModelDraftInput } from "@zcode/provider";
+import type { SavePersonalModelDraftInput, ModelCatalogUpdateResult } from "@zcode/provider";
 
 export function ModelProviderSectionDetail({
   selectedNavItem,
@@ -20,6 +20,7 @@ export function ModelProviderSectionDetail({
   onSave,
   onAddPersonalModel,
   onSavePersonalModelDraft,
+  onUpdateModelsFromCatalog,
   onSetPersonalModelEnabled,
   onDeletePersonalModel,
   onDelete,
@@ -39,6 +40,8 @@ export function ModelProviderSectionDetail({
     useRecommendedConfig?: boolean,
   ) => Promise<unknown>;
   onSavePersonalModelDraft?: (input: SavePersonalModelDraftInput) => Promise<unknown>;
+  // OpenZWork(OZ-F015): 结果回传现有页面 hook，不建立第二份配置状态。
+  onUpdateModelsFromCatalog?: (providerId: string) => Promise<ModelCatalogUpdateResult>;
   onSetPersonalModelEnabled?: (
     providerId: string,
     modelId: string,
@@ -61,6 +64,7 @@ export function ModelProviderSectionDetail({
   const modelEditingProps = {
     onAddPersonalModel,
     onSavePersonalModelDraft,
+    onUpdateModelsFromCatalog,
     onSetPersonalModelEnabled,
     onDeletePersonalModel,
     settingsRevision: providerSettingsView?.revision,

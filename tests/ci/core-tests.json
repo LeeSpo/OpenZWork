@@ -188,7 +188,10 @@
         "packages/provider-node/src/model-discovery/contract.test.ts",
         "packages/ui/src/model-discovery/contract.test.ts",
         "packages/ui/src/project-usage/contract.test.ts",
-        "packages/ui/test/providerModelDiscoveryHook.test.ts"
+        "packages/ui/test/providerModelDiscoveryHook.test.ts",
+        "packages/provider-node/test/modelCatalogUpdate.test.ts",
+        "packages/services/test/modelCatalogUpdateFlow.test.ts",
+        "packages/ui/test/modelCatalogUpdate.test.ts"
       ]
     },
     {

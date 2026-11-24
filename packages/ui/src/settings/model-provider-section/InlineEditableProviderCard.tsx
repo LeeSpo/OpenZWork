@@ -11,6 +11,7 @@ import {
   isApiKeyAccess,
   type ProviderApiType,
   type SavePersonalModelDraftInput,
+  type ModelCatalogUpdateResult,
 } from "@zcode/provider";
 import { logger } from "@/logger.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
@@ -142,6 +143,7 @@ export function InlineEditableProviderCard({
   onSave,
   onAddPersonalModel,
   onSavePersonalModelDraft,
+  onUpdateModelsFromCatalog,
   onSetPersonalModelEnabled,
   onDeletePersonalModel,
   onDelete,
@@ -165,6 +167,8 @@ export function InlineEditableProviderCard({
     useRecommendedConfig?: boolean,
   ) => Promise<unknown>;
   onSavePersonalModelDraft?: (input: SavePersonalModelDraftInput) => Promise<unknown>;
+  // OpenZWork(OZ-F015): 结果回传现有页面 hook，不建立第二份配置状态。
+  onUpdateModelsFromCatalog?: (providerId: string) => Promise<ModelCatalogUpdateResult>;
   onSetPersonalModelEnabled?: (
     providerId: string,
     modelId: string,
@@ -839,6 +843,7 @@ export function InlineEditableProviderCard({
         ) : null}
 
         <ProviderModelsSection
+          onUpdateModelsFromCatalog={onUpdateModelsFromCatalog}
           // 不同 Provider 可以有同名模型；不能复用上一供应商的打开中草稿和版本。
           key={provider.providerId}
           providerId={provider.providerId}

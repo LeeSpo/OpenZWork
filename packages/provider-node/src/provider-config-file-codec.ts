@@ -6,6 +6,7 @@ import {
   parsePersonalProviderConfigMap,
   extractManualModelConfig,
   manualModelConfigSchema,
+  MODEL_CATALOG_FIELDS,
   type ProviderConfigLayerUpdate,
 } from "@zcode/provider";
 
@@ -14,6 +15,21 @@ const CURRENT_SCHEMA_VERSION = 1 as const;
 type ProviderConfigFileMigration = (input: unknown) => unknown;
 
 const migrations: ReadonlyMap<number, ProviderConfigFileMigration> = new Map();
+
+const catalogValueSchema = z.union([
+  z.number().int().positive(),
+  z.boolean(),
+  z.array(z.string().min(1)).min(1),
+]);
+const catalogManagedFieldsSchema = z.array(
+  z
+    .object({
+      providerId: z.string().min(1),
+      modelId: z.string().min(1),
+      fields: z.partialRecord(z.enum(MODEL_CATALOG_FIELDS), catalogValueSchema),
+    })
+    .strict(),
+);
 
 const storedProviderConfigSchema = z
   .object({
@@ -24,6 +40,8 @@ const storedProviderConfigSchema = z
         providerConfigRules: z.unknown(),
         modelConfigRules: z.unknown(),
         defaultModelSelection: modelSelectionSchema.optional(),
+        // OpenZWork(OZ-F015): 可选的目录写入记录；旧文件没有此键，读写保持原样。
+        catalogManagedFields: catalogManagedFieldsSchema.optional(),
       })
       .strict(),
   })
@@ -78,6 +96,9 @@ export function decodeProviderConfigFile(input: unknown): ProviderConfigLayerUpd
     ...(parsed.config.defaultModelSelection === undefined
       ? {}
       : { defaultModelSelection: parsed.config.defaultModelSelection }),
+    ...(parsed.config.catalogManagedFields?.length
+      ? { catalogManagedFields: parsed.config.catalogManagedFields }
+      : {}),
   });
 }
 
@@ -119,6 +140,9 @@ export function encodeProviderConfigFile(update: ProviderConfigLayerUpdate) {
       ...(update.defaultModelSelection === undefined
         ? {}
         : { defaultModelSelection: update.defaultModelSelection }),
+      ...(update.catalogManagedFields?.length
+        ? { catalogManagedFields: update.catalogManagedFields }
+        : {}),
     },
   };
 }

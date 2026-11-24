@@ -1,6 +1,15 @@
 /* oxlint-disable eslint(max-lines) -- Settings/Selection Facade 共享同一套 Registry 投影与写入边界。 */
 import type { ConfigValidationIssue } from "./config-overlay.js";
 import type { ProviderModelMembership } from "./config-service.js";
+import {
+  MODEL_CATALOG_FIELDS,
+  matchModelCatalog,
+  readModelCatalogField,
+  type ModelCatalogField,
+  type ModelCatalogProvider,
+  type ModelCatalogReasoningGap,
+  type ModelCatalogValues,
+} from "./model-catalog-update/index.js";
 import type {
   ModelConfig,
   ModelConfigObject,
@@ -46,6 +55,44 @@ export interface ProviderRegistryFacadeSource {
   onDidChange(listener: (event: ProviderRegistryServiceChangedEvent) => void): () => void;
 }
 
+// OpenZWork(OZ-F015): 一键按已有模型 ID 补全/刷新目录资料（含推理档位）；只改个人覆盖层，不增删模型。
+export interface ModelCatalogFieldReport {
+  readonly modelId: ModelId;
+  readonly fields: readonly ModelCatalogField[];
+}
+export interface ModelCatalogReasoningChange {
+  readonly modelId: ModelId;
+  readonly from: readonly string[];
+  readonly to: readonly string[];
+}
+export interface ModelCatalogReasoningGapReport {
+  readonly modelId: ModelId;
+  readonly reason: ModelCatalogReasoningGap;
+}
+export interface ModelCatalogUpdateResult {
+  readonly view: ProviderSettingsView;
+  readonly matchedModelCount: number;
+  readonly updated: readonly ModelCatalogFieldReport[];
+  readonly reasoningChanged: readonly ModelCatalogReasoningChange[];
+  /** 目录说支持推理，但没有提供可写的档位列表。 */
+  readonly reasoningUnconfigured: readonly ModelCatalogReasoningGapReport[];
+  readonly upToDateModelIds: readonly ModelId[];
+  /** 固定（手动）配置模式的模型：所有字段都由用户设置，整条保留。 */
+  readonly manualModelIds: readonly ModelId[];
+  readonly notFoundModelIds: readonly ModelId[];
+  readonly conflictingFields: readonly ModelCatalogFieldReport[];
+}
+export interface PersonalModelCatalogCandidate {
+  readonly modelId: ModelId;
+  readonly catalog: ModelCatalogValues;
+  /** 计划时的生效配置；仅用于判断“缺失字段是否需要写入”，归属判断在事务内重做。 */
+  readonly effectiveConfig: ModelConfigObject;
+}
+export interface PersonalModelCatalogPatch {
+  readonly modelId: ModelId;
+  readonly values: ModelCatalogValues;
+}
+
 export interface ProviderSettingsMutationTarget {
   createPersonalProvider(input?: {
     readonly templateId?: ProviderTemplateId;
@@ -73,6 +120,12 @@ export interface ProviderSettingsMutationTarget {
     membership?: ProviderModelMembership,
     useRecommendedConfig?: boolean,
   ): Promise<unknown>;
+  // OpenZWork(OZ-F015): 目录资料补全复用单次配置事务，不能逐条留下半份更新。
+  applyPersonalModelCatalogPatches(
+    providerId: ProviderId,
+    candidates: readonly PersonalModelCatalogCandidate[],
+    membership?: ProviderModelMembership,
+  ): Promise<readonly PersonalModelCatalogPatch[]>;
   renamePersonalModel(
     providerId: ProviderId,
     currentModelId: ModelId,
@@ -392,6 +445,89 @@ export class ProviderSettingsFacade {
         useRecommendedConfig,
       ),
     );
+  }
+
+  // OpenZWork(OZ-F015): 在既有供应商队列中按模型名匹配目录，使用原始 ID 单事务补全个人规则。
+  async updateModelsFromCatalog(
+    providerId: ProviderId,
+    catalog: readonly ModelCatalogProvider[],
+  ): Promise<ModelCatalogUpdateResult> {
+    let outcome: Omit<ModelCatalogUpdateResult, "view"> | undefined;
+    const view = await this.#mutateProvider(providerId, "update-models-from-catalog", async (target) => {
+      const snapshot = requireSnapshot(this.#source);
+      const membership = this.#modelMembership(providerId, snapshot);
+      const resolved = snapshot.resolution.resolvedProviders.find(
+        (item) => item.providerId === providerId,
+      )!;
+      const provider = requireEffectiveProvider(snapshot, providerId);
+      const allIds = resolved.models.map((model) => model.modelId);
+      const match = matchModelCatalog(allIds, catalog);
+      const rules = ModelConfigRules.composeEffective(
+        snapshot.config.zcodeBuiltinModelRules,
+        snapshot.config.personalModels,
+      );
+      const candidates: PersonalModelCatalogCandidate[] = [];
+      const manual: ModelId[] = [];
+      const gaps: ModelCatalogReasoningGapReport[] = [];
+      const conflictingFields: ModelCatalogFieldReport[] = [];
+      const effectiveById = new Map<ModelId, ModelConfigObject>();
+      for (const modelId of allIds) {
+        const matched = match.matches.get(modelId);
+        if (!matched) continue;
+        const rule = snapshot.config.personalModels.getExactRule(providerId, modelId);
+        if (rule?.type === "manual-provider-model") {
+          manual.push(modelId);
+          continue;
+        }
+        const effectiveConfig = rules
+          .resolve({
+            providerId,
+            templateId: provider.templateId,
+            modelId,
+            apiType: provider.config.api?.type,
+            baseUrl: provider.config.api?.baseUrl,
+          })
+          .toJSON();
+        effectiveById.set(modelId, effectiveConfig);
+        if (matched.conflictingFields.length) {
+          conflictingFields.push({ modelId, fields: matched.conflictingFields });
+        }
+        if (
+          matched.reasoningGap &&
+          readModelCatalogField(rule?.config.toJSON(), "reasoningLevels") === undefined
+        ) {
+          gaps.push({ modelId, reason: matched.reasoningGap });
+        }
+        // 档位列表和其他目录字段一样作为个人配置保存，请求映射不参与导入决策。
+        candidates.push({ modelId, catalog: matched.values, effectiveConfig });
+      }
+      const applied = candidates.length
+        ? await target.applyPersonalModelCatalogPatches(providerId, candidates, membership)
+        : [];
+      const appliedIds = new Set(applied.map((patch) => patch.modelId));
+      const incompleteIds = new Set([...conflictingFields, ...gaps].map(({ modelId }) => modelId));
+      outcome = {
+        matchedModelCount: match.matches.size,
+        updated: applied.map((patch) => ({
+          modelId: patch.modelId,
+          fields: MODEL_CATALOG_FIELDS.filter((field) => patch.values[field] !== undefined),
+        })),
+        reasoningChanged: applied.flatMap((patch) => {
+          const to = patch.values.reasoningLevels;
+          if (!Array.isArray(to)) return [];
+          const before = readModelCatalogField(effectiveById.get(patch.modelId), "reasoningLevels");
+          return [{ modelId: patch.modelId, from: Array.isArray(before) ? before : [], to }];
+        }),
+        reasoningUnconfigured: gaps,
+        upToDateModelIds: candidates
+          .map((candidate) => candidate.modelId)
+          .filter((modelId) => !appliedIds.has(modelId) && !incompleteIds.has(modelId)),
+        manualModelIds: manual,
+        notFoundModelIds: match.notFoundModelIds,
+        conflictingFields,
+      };
+    });
+    return { view, ...outcome! };
   }
 
   renamePersonalModel(

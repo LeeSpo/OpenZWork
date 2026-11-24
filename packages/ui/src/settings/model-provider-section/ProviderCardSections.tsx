@@ -1,4 +1,4 @@
-import { ProviderModelDiscoveryDialog } from "@/model-discovery/index.js";
+import { ModelCatalogUpdateButton, ProviderModelDiscoveryDialog } from "@/model-discovery/index.js";
 /* eslint-disable max-lines -- 模型供应商卡片仍在迁移期集中维护多个紧耦合区块，后续拆分时再移除。 */
 import {
   useCallback,
@@ -12,7 +12,7 @@ import type {
   ProviderSettingsFormModel,
 } from "@/lib/providerSettingsFormTypes.js";
 import type { ModelConnectivityResult } from "@zcode/shared";
-import type { ProviderApiType } from "@zcode/provider";
+import type { ProviderApiType, ModelCatalogUpdateResult } from "@zcode/provider";
 import {
   TID_MODEL_PROVIDER_ADD_MODEL_BUTTON,
   TID_MODEL_PROVIDER_BASE_URL_INPUT,
@@ -361,6 +361,7 @@ export function ProviderModelsSection({
   onAddModel,
   onReorderModelIds,
   settingsRevision = 0,
+  onUpdateModelsFromCatalog,
 }: {
   providerId: string;
   providerName?: string;
@@ -378,6 +379,8 @@ export function ProviderModelsSection({
   onAddModel: (model: ProviderSettingsFormModel) => void | Promise<void>;
   onReorderModelIds?: (modelIds: string[]) => void;
   settingsRevision?: number;
+  // OpenZWork(OZ-F015): 由页面 hook 接收权威更新结果。
+  onUpdateModelsFromCatalog?: (providerId: string) => Promise<ModelCatalogUpdateResult>;
 }) {
   const { intl } = useZCodeIntl();
   const { providerSettingsService } = useServices();
@@ -480,6 +483,13 @@ export function ProviderModelsSection({
           {intl.formatMessage({ id: "settings.modelProvider.models" })}
         </span>
         <div className="flex flex-wrap items-center gap-2">
+          {/* OpenZWork(OZ-F015): 手动目录补充独立于现有供应商 API 拉取。 */}
+          <ModelCatalogUpdateButton
+            key={providerId}
+            providerId={providerId}
+            providerName={providerName}
+            onUpdate={onUpdateModelsFromCatalog}
+          />
           <Button
             type="button"
             variant="outline"

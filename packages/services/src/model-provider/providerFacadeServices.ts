@@ -2,6 +2,8 @@ import type { Event } from "@zcode/rpc";
 import { ServiceChannels } from "@zcode/shared";
 import {
   type ModelConfigObject,
+  type ModelCatalogProvider,
+  type ModelCatalogUpdateResult,
   type ProviderModelDiscoveryResult,
   type ModelId,
   type ModelSelection,
@@ -37,6 +39,8 @@ export interface IProviderSettingsService {
   ): Promise<ProviderSettingsCreationResult>;
   resolveModelConfig(input: ResolveModelConfigInput): Promise<ModelConfigResolution>;
   discoverModels(providerId: ProviderId): Promise<ProviderModelDiscoveryResult>;
+  // OpenZWork(OZ-F015): 所属 Environment 的一键目录资料补全入口（只更新已有模型）。
+  updateModelsFromCatalog(providerId: ProviderId): Promise<ModelCatalogUpdateResult>;
   savePersonalProviderOverlay(
     providerId: ProviderId,
     config: ProviderConfigObject,
@@ -113,6 +117,8 @@ export function createProviderSettingsService(
   ensureReady: () => Promise<void> = async () => {},
   testConnectivity?: ProviderSettingsConnectivityTester,
   discoverModels?: (config: ProviderConfigObject) => Promise<ProviderModelDiscoveryResult>,
+  // OpenZWork(OZ-F015): 网络读取由 Node adapter 注入，Renderer 不读取目录或配置文件。
+  loadModelCatalog?: () => Promise<readonly ModelCatalogProvider[]>,
 ): IProviderSettingsService {
   return {
     onDidChange: toEvent((listener) => facade.onDidChange(listener)),
@@ -144,6 +150,14 @@ export function createProviderSettingsService(
             facade.resolveModelConfig({ providerId, modelId: item.modelId }).issues.length === 0,
         })),
       };
+    },
+    // OpenZWork(OZ-F015): 目录读取失败时直接抛出分类错误码，不进入配置事务；
+    // 匹配与补全在 Facade 的供应商队列内单事务完成，只改已有个人模型的目录字段。
+    updateModelsFromCatalog: async (providerId) => {
+      await ensureReady();
+      if (!loadModelCatalog) throw new Error("catalog-unavailable");
+      const catalog = await loadModelCatalog();
+      return facade.updateModelsFromCatalog(providerId, catalog);
     },
     resolveModelConfig: async (input) => {
       await ensureReady();

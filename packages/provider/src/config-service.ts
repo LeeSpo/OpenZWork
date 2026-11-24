@@ -11,12 +11,19 @@ import type {
 import {
   ApiKeyAccessConfig,
   ModelConfig,
+  parseModelConfig,
   ProviderConfigMap,
   ProviderConfig as ProviderConfigValue,
   ProviderTemplateMap,
   resolveProviderTemplateName,
 } from "./config/index.js";
 import { resolveOwnedOrder } from "./owned-order.js";
+import type { PersonalModelCatalogCandidate, PersonalModelCatalogPatch } from "./facades.js";
+import {
+  modelCatalogValuesToConfig,
+  planManagedCatalogPatch,
+  type CatalogManagedModelFields,
+} from "./model-catalog-update/index.js";
 import type { ModelSelection } from "@zcode/shared/model-selection";
 import type { ProviderConfigSnapshot, ProviderSource } from "./sources.js";
 
@@ -27,6 +34,8 @@ export interface ProviderConfigLayerSnapshot {
   readonly models: ModelConfigRules;
   readonly providerOrder?: readonly ProviderId[];
   readonly defaultModelSelection?: ModelSelection;
+  // OpenZWork(OZ-F015): “更新模型”写入过的字段及最后写入值，与个人规则同文件同事务。
+  readonly catalogManagedFields?: readonly CatalogManagedModelFields[];
 }
 
 export interface ProviderConfigLayerUpdate {
@@ -35,6 +44,8 @@ export interface ProviderConfigLayerUpdate {
   readonly models: ModelConfigRules;
   readonly providerOrder?: readonly ProviderId[];
   readonly defaultModelSelection?: ModelSelection;
+  // OpenZWork(OZ-F015): “更新模型”写入过的字段及最后写入值，与个人规则同文件同事务。
+  readonly catalogManagedFields?: readonly CatalogManagedModelFields[];
 }
 
 export interface PersonalProviderConfigRepository extends ProviderSource<ProviderConfigLayerSnapshot> {
@@ -365,6 +376,76 @@ export class ProviderConfigService implements ProviderSource<ProviderConfigSnaps
     });
   }
 
+  // OpenZWork(OZ-F015): 补全/刷新已有模型（内置继承与个人添加）的目录字段，写入 Personal 覆盖层。
+  // 锁内重查成员、固定模式和字段归属（用户设置 / 目录管理），规则与目录写入记录在同一次事务写入；
+  // 任何校验失败都不落盘。从不增删模型或改动顺序，也不修改内置配置文件。
+  async applyPersonalModelCatalogPatches(
+    providerId: ProviderId,
+    candidates: readonly PersonalModelCatalogCandidate[],
+    membership?: ProviderModelMembership,
+  ): Promise<readonly PersonalModelCatalogPatch[]> {
+    const id = normalizeId("providerId", providerId);
+    const builtin = await this.#zcodeBuiltinSource.read();
+    let applied: PersonalModelCatalogPatch[] = [];
+    await this.#updatePersonal((current) => {
+      assertMembershipCurrent(membership, id, current);
+      const members = new Set([
+        ...(membership?.inheritedModelIds ??
+          resolveProviderBuiltinModelIds(builtin, current.providers, id)),
+        ...(current.providers.get(id)?.personalModelIds ?? []),
+      ]);
+      const records = new Map(
+        (current.catalogManagedFields ?? []).map(
+          (entry) => [JSON.stringify([entry.providerId, entry.modelId]), entry] as const,
+        ),
+      );
+      const key = (modelId: string) => JSON.stringify([id, modelId]);
+      // 已删除/改名的模型不再保留记录。
+      for (const entry of records.values()) {
+        if (entry.providerId === id && !members.has(entry.modelId)) records.delete(key(entry.modelId));
+      }
+      let rules = current.models;
+      applied = [];
+      for (const candidate of candidates) {
+        const modelId = normalizeId("modelId", candidate.modelId);
+        if (!members.has(modelId)) continue;
+        const rule = rules.getExactRule(id, modelId);
+        if (rule?.type === "manual-provider-model") {
+          // 固定配置模式下全部字段归用户，目录记录作废。
+          records.delete(key(modelId));
+          continue;
+        }
+        const { patch, record } = planManagedCatalogPatch({
+          catalog: candidate.catalog,
+          personalConfig: rule?.config.toJSON(),
+          effectiveConfig: candidate.effectiveConfig,
+          recorded: records.get(key(modelId))?.fields,
+        });
+        if (Object.keys(record).length)
+          records.set(key(modelId), { providerId: id, modelId, fields: record });
+        else records.delete(key(modelId));
+        if (!Object.keys(patch).length) continue;
+        const config = (rule?.config ?? new ModelConfig({})).overlay(
+          parseModelConfig(modelCatalogValuesToConfig(patch)),
+        );
+        rules = rules.setExact(id, modelId, config, true);
+        applied.push({ modelId, values: patch });
+      }
+      const nextRecords = [...records.values()];
+      const recordsChanged =
+        JSON.stringify(nextRecords) !== JSON.stringify(current.catalogManagedFields ?? []);
+      if (!applied.length && !recordsChanged) return current;
+      return {
+        providers: current.providers,
+        models: rules,
+        providerOrder: current.providerOrder,
+        defaultModelSelection: current.defaultModelSelection,
+        ...(nextRecords.length ? { catalogManagedFields: nextRecords } : { catalogManagedFields: undefined }),
+      };
+    });
+    return applied;
+  }
+
   async renamePersonalModel(
     providerId: ProviderId,
     currentModelId: ModelId,
@@ -572,6 +653,8 @@ export class ProviderConfigService implements ProviderSource<ProviderConfigSnaps
     return this.#personalRepository.update((current) => ({
       // Provider/Model/排序只修改自己的成员，不能因共用文件清掉默认选择。
       defaultModelSelection: current.defaultModelSelection,
+      // OpenZWork(OZ-F015): 普通编辑不能清掉目录写入记录；记录与规则不一致时由更新入口按归属规则收敛。
+      catalogManagedFields: current.catalogManagedFields,
       ...transform(current),
     }));
   }

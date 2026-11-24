@@ -1973,6 +1973,19 @@ modules:
       ui: .
     owner: desktop-settings
 
+  # model-catalog-update：由 architecture:adopt 登记
+  - id: model-catalog-update
+    roots:
+      - packages/provider/src/model-catalog-update
+    managed: true
+    requires: [provider]
+    publicEntrypoints:
+      - packages/provider/src/model-catalog-update/index.ts
+      - packages/provider/src/model-catalog-update/contract.ts
+    layers:
+      domain: .
+    owner: model-settings
+
 global:
   # 临时时间戳（2026-09-10）：unmanaged-new-file 只约束此日期之后首次入库的文件。
   # 基于领先 staging 很多的分支开工时，merge-base 之前的"新增"文件不应被追溯。

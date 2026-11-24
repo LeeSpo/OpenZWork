@@ -2,12 +2,14 @@
 import {
   NodeModelSelectionConfigRepository,
   createProviderModelDiscovery,
+  createModelsDevCatalog,
   createNodeModelSelectionFacade,
 } from "@zcode/provider-node";
 import {
   ProviderRegistryService,
   ProviderSettingsFacade,
   type ProviderSettingsMutationTarget,
+  type ModelCatalogProvider,
 } from "@zcode/provider";
 import {
   createProviderConfigRuntime,
@@ -28,6 +30,8 @@ export interface ProviderRuntimeOptions extends ProviderConfigRuntimeOptions {
 }
 
 export interface ProviderRuntimeDependencies {
+  // OpenZWork(OZ-F015): 测试可注入公开目录，正式运行由固定源 adapter 实现。
+  readonly loadModelCatalog?: () => Promise<readonly ModelCatalogProvider[]>;
   readonly configRuntime: ProviderConfigRuntime;
   readonly testConnectivity?: ProviderSettingsConnectivityTester;
   readonly modelSelectionConfiguredDefaultSource?: ModelSelectionConfiguredDefaultSource;
@@ -62,6 +66,7 @@ export class ProviderRuntime {
       ensureReady,
       dependencies.testConnectivity,
       createProviderModelDiscovery().discover,
+      dependencies.loadModelCatalog ?? createModelsDevCatalog().load,
     );
     this.#modelSelectionRuntime = createModelSelectionService(
       createNodeModelSelectionFacade(this.registryService),
@@ -107,6 +112,9 @@ function createSettingsMutationTarget(
       configService.reorderPersonalModels(providerId, modelIds, membership),
     // 手工四参数转发曾丢掉新增的配置模式；直接绑定完整签名，避免装配层截断写入意图。
     addPersonalModel: configService.addPersonalModel.bind(configService),
+    // OpenZWork(OZ-F015): 目录资料补全与普通编辑共享同一配置仓库和锁。
+    applyPersonalModelCatalogPatches:
+      configService.applyPersonalModelCatalogPatches.bind(configService),
     renamePersonalModel: (providerId, currentModelId, nextModelId, membership) =>
       configService.renamePersonalModel(providerId, currentModelId, nextModelId, membership),
     deletePersonalModel: (providerId, modelId, membership) =>

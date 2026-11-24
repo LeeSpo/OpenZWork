@@ -2,6 +2,8 @@ export * from "./config-overlay.js";
 export * from "./config-service.js";
 export * from "./config/index.js";
 export * from "./facades.js";
+// OpenZWork(OZ-F015): 目录匹配与补丁规划供 Facade/测试复用。
+export * from "./model-catalog-update/index.js";
 export * from "./effective-model-selection.js";
 export * from "./model-selection-config.js";
 export * from "./owned-order.js";

@@ -202,6 +202,38 @@ entries:
       - apps/zcode-cli/packages/contracts/src/interfaces/session-store.port.ts
       - apps/zcode-cli/packages/bootstrap/src/zcode-protocol/server-operations.ts
       - packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx
+  - id: OZ-F015
+    kind: feature
+    status: active
+    title: 一键更新模型资料
+    summary: 模型页按名称匹配 models.dev，资料取目录过半值，推理档位直接采用目录明确列出的列表并优先多档，保留手填值和固定配置。
+    spec: docs/specs/model-catalog-update-openzwork.md
+    modules:
+      - model-catalog-update
+      - provider-model-discovery
+      - provider-model-discovery-ui
+    tests:
+      - packages/provider-node/test/modelCatalogUpdate.test.ts
+      - packages/services/test/modelCatalogUpdateFlow.test.ts
+      - packages/ui/test/modelCatalogUpdate.test.ts
+    hooks:
+      - packages/provider/src/config-service.ts
+      - packages/provider/src/facades.ts
+      - packages/provider/src/index.ts
+      - packages/provider-node/src/provider-config-file-codec.ts
+      - packages/provider-node/src/personal-provider-config-repository.ts
+      - packages/services/src/node.ts
+      - packages/services/src/model-provider/providerFacadeServices.ts
+      - packages/services/src/model-provider/providerRuntime.ts
+      - packages/ui/src/hooks/useModelProviders.ts
+      - packages/ui/src/settings/ModelProviderSection.tsx
+      - packages/ui/src/settings/model-provider-section/ProviderCardSections.tsx
+      - packages/ui/src/settings/model-provider-section/InlineEditableProviderCard.tsx
+      - packages/ui/src/settings/model-provider-section/Detail.tsx
+      - packages/ui/src/i18n/locales/en-US.ts
+      - packages/ui/src/i18n/locales/zh-CN.ts
+      - tests/ci/core-tests.json
+    source: LeeSpo/OpenZWork 独立 fork
   - id: OZ-F009
     kind: feature
     status: active

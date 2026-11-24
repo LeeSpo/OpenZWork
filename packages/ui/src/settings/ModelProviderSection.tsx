@@ -64,6 +64,7 @@ export function ModelProviderSection({
     createPersonalProvider,
     addPersonalModel,
     savePersonalModelDraft,
+    updateModelsFromCatalog,
     setPersonalModelEnabled,
     deletePersonalModel,
     deleteProvider,
@@ -346,6 +347,8 @@ export function ModelProviderSection({
           onSave={handleSave}
           onAddPersonalModel={addPersonalModel}
           onSavePersonalModelDraft={savePersonalModelDraft}
+          // OpenZWork(OZ-F015): 批量补入返回当前 Environment 的权威视图。
+          onUpdateModelsFromCatalog={updateModelsFromCatalog}
           onSetPersonalModelEnabled={setPersonalModelEnabled}
           onDeletePersonalModel={deletePersonalModel}
           onDelete={handleDelete}

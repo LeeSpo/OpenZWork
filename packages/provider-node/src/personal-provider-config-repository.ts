@@ -83,6 +83,8 @@ export class NodePersonalProviderConfigRepository implements PersonalProviderCon
           models: next.models,
           providerOrder: next.providerOrder,
           defaultModelSelection: next.defaultModelSelection,
+          // OpenZWork(OZ-F015): 目录写入记录随同一次原子写落盘。
+          catalogManagedFields: next.catalogManagedFields,
         });
         const committed = await this.#writeLocked(update);
         const snapshot = snapshotFromUpdate(committed);
@@ -277,5 +279,6 @@ function snapshotFromUpdate(update: ProviderConfigLayerUpdate): ProviderConfigLa
     // 快照必须与 revision 对应的磁盘内容一致；补空数组会让未声明排序的文件在 CAS 时误报变化。
     providerOrder: update.providerOrder,
     defaultModelSelection: update.defaultModelSelection,
+    catalogManagedFields: update.catalogManagedFields,
   });
 }

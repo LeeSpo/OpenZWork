@@ -110,6 +110,16 @@ export function useModelProviders(target: {
     [commitProviderSettingsView, providerSettingsService],
   );
 
+  // OpenZWork(OZ-F015): 与单模型编辑一样提交权威 View，不能只依赖远端变更事件。
+  const updateModelsFromCatalog = useCallback(
+    async (providerId: string) => {
+      const result = await providerSettingsService.updateModelsFromCatalog(providerId);
+      commitProviderSettingsView(result.view);
+      return result;
+    },
+    [providerSettingsService, commitProviderSettingsView],
+  );
+
   const savePersonalModelDraft = useCallback(
     async (input: Parameters<typeof providerSettingsService.savePersonalModelDraft>[0]) => {
       const view = await providerSettingsService.savePersonalModelDraft(input);
@@ -238,6 +248,7 @@ export function useModelProviders(target: {
     createPersonalProvider,
     addPersonalModel,
     savePersonalModelDraft,
+    updateModelsFromCatalog,
     setPersonalModelEnabled,
     deletePersonalModel,
     deleteProvider,

@@ -64,6 +64,7 @@ import type { IChannel } from "@zcode/rpc";
 import type { DynamicWorkflowMode } from "@zcode/shared";
 import type { PluginSandboxHandle, PluginSandboxRegisterInput } from "@zcode/shared/mcp-apps";
 import {
+  createModelsDevCatalog,
   createNodeProviderRuntimePathEnv,
   NodeModelSelectionConfigRepository,
   PERSONAL_PROVIDER_CONFIG_FILE_NAME,
@@ -799,6 +800,9 @@ export function createLocalServices(options: {
     modelSelectionConfiguredDefaultSource,
     disposeModelSelectionConfiguredDefaultSource: () =>
       modelSelectionConfiguredDefaultSource.dispose(),
+    // OpenZWork(OZ-F015)：Host 是独立 Node 进程，裸 fetch 不走应用代理/CA 设置；
+    // 目录拉取复用 Host API 网络出口，与供应商请求同一选路。
+    loadModelCatalog: createModelsDevCatalog(hostApiNetworkTransport.fetch).load,
     testConnectivity: createProviderSettingsConnectivityTester({
       testModelConnectivity: async (input) => {
         if (!providerConnectivityAgentService) {
